@@ -1,0 +1,13 @@
+cd en_US/
+ls
+du -h en_US.blogs.txt
+wc -l en_US.twitter.txt
+
+grep "love" en_US.twitter.txt | wc -l
+grep "hate" en_US.twitter.txt | wc -l
+grep "biostats" en_US.twitter.txt
+grep "A computer once beat me at chess, but it was no match for me at kickboxing" en_US.twitter.txt
+
+cat en_US.news.txt |awk '{print length}'|sort -nr|head -1
+cat en_US.blogs.txt |awk '{print length}'|sort -nr|head -1
+cat en_US.twitter.txt |awk '{print length}'|sort -nr|head -1

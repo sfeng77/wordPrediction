@@ -1,0 +1,27 @@
+---
+title: "Swiftkey Word Prediction"
+author: "Sheng Feng"
+date: "4/9/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache = TRUE)
+
+library(printr)
+library(ggplot)
+library(tm)
+library(dplyr)
+library(data.table)
+```
+
+## Introduction
+
+This is the capstone project for the Data Science Specialization. In this work we foucs on Natural Languange Processing and word prediction. 
+
+## Loading data
+```{r loading}
+twitter <- read.table("final/en_US/en_US.twitter.txt", nrow = 5000)
+
+```
