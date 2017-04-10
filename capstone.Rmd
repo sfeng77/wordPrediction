@@ -10,18 +10,79 @@ knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_chunk$set(cache = TRUE)
 
 library(printr)
-library(ggplot)
+library(ggplot2)
 library(tm)
 library(dplyr)
 library(data.table)
+library(tidytext)
 ```
 
 ## Introduction
 
 This is the capstone project for the Data Science Specialization. In this work we foucs on Natural Languange Processing and word prediction. 
 
-## Loading data
-```{r loading}
-twitter <- read.table("final/en_US/en_US.twitter.txt", nrow = 5000)
+## TM Referece 
+[tidytext](http://tidytextmining.com/)
+[ngram](https://en.wikipedia.org/wiki/N-gram)
 
+## Loading data
+```{r sampling}
+processFile <- function(filepath, prob, max) {
+  con <- file(filepath, "r") 
+  datalist = rep("", max)
+  count = 0
+  while (length(oneLine <- readLines(con, n = 1, warn = FALSE)) > 0 & count < max) {
+    if (runif(1) < prob){
+      count = count + 1
+      datalist[count]  <- oneLine
+      count = count
+    }
+  } 
+
+  close(con) ## It's important to close the connection when you are done
+
+  return(data.frame(lines = datalist[1:count]))
+}
+
+set.seed(5832)
+dir.create(file.path(".", "sample"), showWarnings = FALSE)
+if(!file.exists("sample/twitter_sample.txt")){
+  twsample <- processFile("final/en_US/en_US.twitter.txt", prob = 0.2, 200000)
+  write.table(twsample, "sample/twitter_sample.txt", row.names = FALSE, col.names = FALSE, quote = FALSE)
+}
+if(!file.exists("sample/blogs_sample.txt")){
+  blogsample <- processFile("final/en_US/en_US.blogs.txt", prob = 0.2, 200000)
+  write.table(blogsample, "sample/blogs_sample.txt", row.names = FALSE, col.names = FALSE, quote = FALSE)
+}
+if(!file.exists("sample/news_sample.txt")){
+  newsample <- processFile("final/en_US/en_US.news.txt", prob = 0.2, 200000)
+  write.table(newsample, "sample/news_sample.txt", row.names = FALSE, col.names = FALSE, quote = FALSE)
+}
 ```
+
+
+```{r load.samples}
+tw <- readLines("sample/twitter_sample.txt")
+bl <- readLines("sample/blogs_sample.txt")
+nw <- readLines("sample/news_sample.txt")
+docs <- data_frame(text = c(tw,bl,nw))
+tidy_doc <- docs %>% unnest_tokens(word, text)
+```
+
+```{r remove.stop.words}
+data(stop_words)
+tidystop <- tidy_doc %>% anti_join(stop_words)
+```
+
+```{r word.count}
+tidystop %>%  count(word, sort = TRUE) %>%
+   filter(n > 5000) %>%
+   mutate(word = reorder(word, n)) %>%
+   ggplot(aes(word, n)) +
+   geom_col() +
+   xlab(NULL) +
+   coord_flip()
+```
+
+
+
