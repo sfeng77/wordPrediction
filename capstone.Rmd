@@ -9,12 +9,10 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_chunk$set(cache = TRUE)
 
-library(printr)
 library(ggplot2)
-library(tm)
 library(dplyr)
-library(data.table)
 library(tidytext)
+library(data.table)
 ```
 
 ## Introduction
@@ -68,7 +66,7 @@ bl <- readLines("sample/blogs_sample.txt")
 nw <- readLines("sample/news_sample.txt")
 docs <- data_frame(text = c(tw,bl,nw))
 tidy_doc <- docs %>% unnest_tokens(word, text) %>%
-        filter(!grepl("[0-9]+", word))
+        filter(!grepl("[+-]?([0-9]*[.])?[0-9]+", word))
 ```
 ```{r remove.bad.words}
 bad.words <- data_frame(word = as.character(read.table("google_twunter_lol", skip = 1, sep = ":", nrow = 451)$V1))
@@ -105,7 +103,57 @@ tidystop %>%
                    max.words = 100)
 ```
 
+```{r grnerate.bigrams}
+mybigrams <- docs %>% unnest_tokens(bigram, text, token = "ngrams", n = 2) 
+```
+```{r filter.bigrams}
+library(tidyr)
+bigrams_separated <- mybigrams %>%
+            filter(!grepl("[+-]?([0-9]*[.])?[0-9]+", bigram)) %>% 
+            separate(bigram, c("word1", "word2"), sep = " ")
+
+bigrams_filtered <- bigrams_separated %>%
+  filter(!word1 %in% bad.words$word) %>%
+  filter(!word2 %in% bad.words$word)
+```
+
+```{r top.bigrams}
+top_bigrams <- bigrams_filtered %>% count(word1, word2, sort = TRUE)
+```
 
 
+```{r trigrams}
+mytrigrams <- docs %>% unnest_tokens(trigram, text, token = "ngrams", n = 3) 
+```
+```{r filter.trigrams}
+trigrams_separated <- mytrigrams %>%
+            filter(!grepl("[+-]?([0-9]*[.])?[0-9]+", trigram)) %>% 
+            separate(trigram, c("word1", "word2","word3"), sep = " ")
+
+trigrams_filtered <- trigrams_separated %>%
+  filter(!word1 %in% bad.words$word) %>%
+  filter(!word2 %in% bad.words$word) %>%
+  filter(!word3 %in% bad.words$word)
+```
+
+```{r top.trigrams}
+top_trigrams <- trigrams_filtered %>% count(word1, word2, word3, sort = TRUE)
+```
 
 
+```{r quadgrams}
+top_quadgrams <- docs %>% unnest_tokens(quadgram, text, token = "ngrams", n = 4)  %>%
+        filter(!grepl("[+-]?([0-9]*[.])?[0-9]+", quadgram)) %>% 
+        separate(quadgram, c("word1", "word2","word3","word4"), sep = " ") %>%
+        filter(!word1 %in% bad.words$word) %>%
+        filter(!word2 %in% bad.words$word) %>%
+        filter(!word3 %in% bad.words$word) %>%
+        filter(!word4 %in% bad.words$word) %>%
+        count(word1, word2, word3, word4, sort = TRUE)
+```
+
+```{r view.bigram.trigram}
+head(top_bigrams)
+head(top_trigrams)
+head(top_quadgrams)
+```
