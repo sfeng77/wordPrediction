@@ -21,9 +21,10 @@ library(tidytext)
 
 This is the capstone project for the Data Science Specialization. In this work we foucs on Natural Languange Processing and word prediction. 
 
-## TM Referece 
-[tidytext](http://tidytextmining.com/)
-[ngram](https://en.wikipedia.org/wiki/N-gram)
+## Referece 
+[tidytext](http://tidytextmining.com/)  
+[ngram](https://en.wikipedia.org/wiki/N-gram)  
+[bad words](https://gist.github.com/jamiew/1112488)
 
 ## Loading data
 ```{r sampling}
@@ -66,9 +67,13 @@ tw <- readLines("sample/twitter_sample.txt")
 bl <- readLines("sample/blogs_sample.txt")
 nw <- readLines("sample/news_sample.txt")
 docs <- data_frame(text = c(tw,bl,nw))
-tidy_doc <- docs %>% unnest_tokens(word, text)
+tidy_doc <- docs %>% unnest_tokens(word, text) %>%
+        filter(!grepl("[0-9]+", word))
 ```
-
+```{r remove.bad.words}
+bad.words <- data_frame(word = as.character(read.table("google_twunter_lol", skip = 1, sep = ":", nrow = 451)$V1))
+tidy_doc <- tidy_doc %>% anti_join(bad.words)
+```
 ```{r remove.stop.words}
 data(stop_words)
 tidystop <- tidy_doc %>% anti_join(stop_words)
@@ -76,13 +81,31 @@ tidystop <- tidy_doc %>% anti_join(stop_words)
 
 ```{r word.count}
 tidystop %>%  count(word, sort = TRUE) %>%
-   filter(n > 5000) %>%
+   .[1:30,] %>%
    mutate(word = reorder(word, n)) %>%
    ggplot(aes(word, n)) +
    geom_col() +
    xlab(NULL) +
    coord_flip()
 ```
+
+```{r word.cloud}
+library(wordcloud)
+tidystop %>%
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 100))
+```
+```{r comparison.cloud}
+library(reshape2)
+tidystop %>%
+ inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(colors = c("#F8766D", "#00BFC4"),
+                   max.words = 100)
+```
+
+
 
 
 
