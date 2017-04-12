@@ -13,6 +13,7 @@ library(ggplot2)
 library(dplyr)
 library(tidytext)
 library(data.table)
+library(printr)
 ```
 
 ## Introduction
@@ -120,7 +121,9 @@ bigrams_filtered <- bigrams_separated %>%
 ```
 
 ```{r top.bigrams}
-top_bigrams <- bigrams_filtered %>% count(word1, word2, sort = TRUE)
+bigramTable <- bigrams_filtered %>% 
+                count(word1, word2, sort = TRUE) %>% 
+                rename(first = word1, last = word2, freq = n)
 ```
 
 
@@ -139,23 +142,55 @@ trigrams_filtered <- trigrams_separated %>%
 ```
 
 ```{r top.trigrams}
-top_trigrams <- trigrams_filtered %>% count(word1, word2, word3, sort = TRUE)
+trigramTable <- trigrams_filtered %>% count(word1, word2, word3, sort = TRUE) %>% rename(last = word3, freq = n) %>% mutate(first = paste(word1, word2)) %>% ungroup() %>% select(first, last, freq)
 ```
 
 
 ```{r quadgrams}
-top_quadgrams <- docs %>% unnest_tokens(quadgram, text, token = "ngrams", n = 4)  %>%
+quadgramTable <- docs %>% unnest_tokens(quadgram, text, token = "ngrams", n = 4)  %>%
         filter(!grepl("[+-]?([0-9]*[.])?[0-9]+", quadgram)) %>% 
         separate(quadgram, c("word1", "word2","word3","word4"), sep = " ") %>%
         filter(!word1 %in% bad.words$word) %>%
         filter(!word2 %in% bad.words$word) %>%
         filter(!word3 %in% bad.words$word) %>%
         filter(!word4 %in% bad.words$word) %>%
-        count(word1, word2, word3, word4, sort = TRUE)
+        count(word1, word2, word3, word4, sort = TRUE) %>% 
+        rename(last = word4, freq = n) %>% 
+        mutate(first = paste(word1, word2, word3)) %>% 
+        ungroup() %>% 
+        select(first, last, freq)
 ```
 
 ```{r view.bigram.trigram}
-head(top_bigrams)
-head(top_trigrams)
-head(top_quadgrams)
+head(bigramTable)
+head(trigramTable)
+head(quadgramTable)
 ```
+
+
+## Good-Turing Discount
+
+```{r GT.discount}
+calcDiscount <- function(ngramTable){
+
+  freqTable <- ngramTable %>% group_by(freq) %>% summarise(n = n()) %>% arrange(freq)
+  freqTable$discount = 1
+  for(i in 1:5){
+    currR = i
+    nextR = i + 1
+    currN = freqTable$n[i]
+    nextN = freqTable$n[i + 1]
+    freqTable$discount[i] <- (nextR / currR) * (nextN / currN)
+  }
+  freqTable <- freqTable %>% select(freq, discount)
+  ngramTable %>% left_join(freqTable, by = "freq")
+  
+}
+
+bigramTable <- calcDiscount(bigramTable)
+trigramTable <- calcDiscount(trigramTable)
+quadgramTable <- calcDiscount(quadgramTable)
+```
+
+
+## Katz Backoff

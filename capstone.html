@@ -222,7 +222,9 @@ tidystop &lt;- tidy_doc %&gt;% anti_join(stop_words)</code></pre>
 bigrams_filtered &lt;- bigrams_separated %&gt;%
   filter(!word1 %in% bad.words$word) %&gt;%
   filter(!word2 %in% bad.words$word)</code></pre>
-<pre class="r"><code>top_bigrams &lt;- bigrams_filtered %&gt;% count(word1, word2, sort = TRUE)</code></pre>
+<pre class="r"><code>bigramTable &lt;- bigrams_filtered %&gt;% 
+                count(word1, word2, sort = TRUE) %&gt;% 
+                rename(first = word1, last = word2, freq = n)</code></pre>
 <pre class="r"><code>mytrigrams &lt;- docs %&gt;% unnest_tokens(trigram, text, token = &quot;ngrams&quot;, n = 3) </code></pre>
 <pre class="r"><code>trigrams_separated &lt;- mytrigrams %&gt;%
             filter(!grepl(&quot;[+-]?([0-9]*[.])?[0-9]+&quot;, trigram)) %&gt;% 
@@ -232,20 +234,24 @@ trigrams_filtered &lt;- trigrams_separated %&gt;%
   filter(!word1 %in% bad.words$word) %&gt;%
   filter(!word2 %in% bad.words$word) %&gt;%
   filter(!word3 %in% bad.words$word)</code></pre>
-<pre class="r"><code>top_trigrams &lt;- trigrams_filtered %&gt;% count(word1, word2, word3, sort = TRUE)</code></pre>
-<pre class="r"><code>top_quadgrams &lt;- docs %&gt;% unnest_tokens(quadgram, text, token = &quot;ngrams&quot;, n = 4)  %&gt;%
+<pre class="r"><code>trigramTable &lt;- trigrams_filtered %&gt;% count(word1, word2, word3, sort = TRUE) %&gt;% rename(last = word3, freq = n) %&gt;% mutate(first = paste(word1, word2)) %&gt;% ungroup() %&gt;% select(first, last, freq)</code></pre>
+<pre class="r"><code>quadgramTable &lt;- docs %&gt;% unnest_tokens(quadgram, text, token = &quot;ngrams&quot;, n = 4)  %&gt;%
         filter(!grepl(&quot;[+-]?([0-9]*[.])?[0-9]+&quot;, quadgram)) %&gt;% 
         separate(quadgram, c(&quot;word1&quot;, &quot;word2&quot;,&quot;word3&quot;,&quot;word4&quot;), sep = &quot; &quot;) %&gt;%
         filter(!word1 %in% bad.words$word) %&gt;%
         filter(!word2 %in% bad.words$word) %&gt;%
         filter(!word3 %in% bad.words$word) %&gt;%
         filter(!word4 %in% bad.words$word) %&gt;%
-        count(word1, word2, word3, word4, sort = TRUE)</code></pre>
-<pre class="r"><code>head(top_bigrams)</code></pre>
+        count(word1, word2, word3, word4, sort = TRUE) %&gt;% 
+        rename(last = word4, freq = n) %&gt;% 
+        mutate(first = paste(word1, word2, word3)) %&gt;% 
+        ungroup() %&gt;% 
+        select(first, last, freq)</code></pre>
+<pre class="r"><code>head(bigramTable)</code></pre>
 <pre><code>## Source: local data frame [6 x 3]
-## Groups: word1 [5]
+## Groups: first [5]
 ## 
-##   word1 word2     n
+##   first  last  freq
 ##   &lt;chr&gt; &lt;chr&gt; &lt;int&gt;
 ## 1    of   the 45170
 ## 2    in   the 40238
@@ -253,30 +259,115 @@ trigrams_filtered &lt;- trigrams_separated %&gt;%
 ## 4    on   the 20408
 ## 5   for   the 19046
 ## 6    to    be 18438</code></pre>
-<pre class="r"><code>head(top_trigrams)</code></pre>
-<pre><code>## Source: local data frame [6 x 4]
-## Groups: word1, word2 [6]
-## 
-##    word1 word2 word3     n
-##    &lt;chr&gt; &lt;chr&gt; &lt;chr&gt; &lt;int&gt;
-## 1    one    of   the  3629
-## 2      a   lot    of  3166
-## 3     to    be     a  1970
-## 4 thanks   for   the  1947
-## 5      i  want    to  1786
-## 6     it   was     a  1724</code></pre>
-<pre class="r"><code>head(top_quadgrams)</code></pre>
-<pre><code>## Source: local data frame [6 x 5]
-## Groups: word1, word2, word3 [6]
-## 
-##    word1 word2 word3  word4     n
-##    &lt;chr&gt; &lt;chr&gt; &lt;chr&gt;  &lt;chr&gt; &lt;int&gt;
-## 1    the   end    of    the   823
-## 2    the  rest    of    the   752
-## 3     at   the   end     of   691
-## 4     at   the  same   time   593
-## 5    for   the first   time   585
-## 6 thanks   for   the follow   491</code></pre>
+<pre class="r"><code>head(trigramTable)</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">first</th>
+<th align="left">last</th>
+<th align="right">freq</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">one of</td>
+<td align="left">the</td>
+<td align="right">3629</td>
+</tr>
+<tr class="even">
+<td align="left">a lot</td>
+<td align="left">of</td>
+<td align="right">3166</td>
+</tr>
+<tr class="odd">
+<td align="left">to be</td>
+<td align="left">a</td>
+<td align="right">1970</td>
+</tr>
+<tr class="even">
+<td align="left">thanks for</td>
+<td align="left">the</td>
+<td align="right">1947</td>
+</tr>
+<tr class="odd">
+<td align="left">i want</td>
+<td align="left">to</td>
+<td align="right">1786</td>
+</tr>
+<tr class="even">
+<td align="left">it was</td>
+<td align="left">a</td>
+<td align="right">1724</td>
+</tr>
+</tbody>
+</table>
+<pre class="r"><code>head(quadgramTable)</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">first</th>
+<th align="left">last</th>
+<th align="right">freq</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">the end of</td>
+<td align="left">the</td>
+<td align="right">823</td>
+</tr>
+<tr class="even">
+<td align="left">the rest of</td>
+<td align="left">the</td>
+<td align="right">752</td>
+</tr>
+<tr class="odd">
+<td align="left">at the end</td>
+<td align="left">of</td>
+<td align="right">691</td>
+</tr>
+<tr class="even">
+<td align="left">at the same</td>
+<td align="left">time</td>
+<td align="right">593</td>
+</tr>
+<tr class="odd">
+<td align="left">for the first</td>
+<td align="left">time</td>
+<td align="right">585</td>
+</tr>
+<tr class="even">
+<td align="left">thanks for the</td>
+<td align="left">follow</td>
+<td align="right">491</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="good-turing-discount" class="section level2">
+<h2>Good-Turing Discount</h2>
+<pre class="r"><code>calcDiscount &lt;- function(ngramTable){
+
+  freqTable &lt;- ngramTable %&gt;% group_by(freq) %&gt;% summarise(n = n()) %&gt;% arrange(freq)
+  freqTable$discount = 1
+  for(i in 1:5){
+    currR = i
+    nextR = i + 1
+    currN = freqTable$n[i]
+    nextN = freqTable$n[i + 1]
+    freqTable$discount[i] &lt;- (nextR / currR) * (nextN / currN)
+  }
+  freqTable &lt;- freqTable %&gt;% select(freq, discount)
+  ngramTable %&gt;% left_join(freqTable, by = &quot;freq&quot;)
+  
+}
+
+bigramTable &lt;- calcDiscount(bigramTable)
+trigramTable &lt;- calcDiscount(trigramTable)
+quadgramTable &lt;- calcDiscount(quadgramTable)</code></pre>
+</div>
+<div id="katz-backoff" class="section level2">
+<h2>Katz Backoff</h2>
 </div>
 
 
