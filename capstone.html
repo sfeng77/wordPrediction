@@ -224,6 +224,7 @@ bigrams_filtered &lt;- bigrams_separated %&gt;%
   filter(!word2 %in% bad.words$word)</code></pre>
 <pre class="r"><code>bigramTable &lt;- bigrams_filtered %&gt;% 
                 count(word1, word2, sort = TRUE) %&gt;% 
+                ungroup() %&gt;%
                 rename(first = word1, last = word2, freq = n)</code></pre>
 <pre class="r"><code>mytrigrams &lt;- docs %&gt;% unnest_tokens(trigram, text, token = &quot;ngrams&quot;, n = 3) </code></pre>
 <pre class="r"><code>trigrams_separated &lt;- mytrigrams %&gt;%
@@ -348,8 +349,8 @@ trigrams_filtered &lt;- trigrams_separated %&gt;%
 <h2>Good-Turing Discount</h2>
 <pre class="r"><code>calcDiscount &lt;- function(ngramTable){
 
-  freqTable &lt;- ngramTable %&gt;% group_by(freq) %&gt;% summarise(n = n()) %&gt;% arrange(freq)
-  freqTable$discount = 1
+  freqTable &lt;- ngramTable %&gt;% group_by(freq) %&gt;% summarise(n = n()) %&gt;% ungroup() %&gt;% arrange(freq)
+  freqTable$discount &lt;- 1
   for(i in 1:5){
     currR = i
     nextR = i + 1
@@ -358,16 +359,151 @@ trigrams_filtered &lt;- trigrams_separated %&gt;%
     freqTable$discount[i] &lt;- (nextR / currR) * (nextN / currN)
   }
   freqTable &lt;- freqTable %&gt;% select(freq, discount)
-  ngramTable %&gt;% left_join(freqTable, by = &quot;freq&quot;)
-  
+  ngramTable %&gt;% left_join(freqTable)
 }
 
-bigramTable &lt;- calcDiscount(bigramTable)
-trigramTable &lt;- calcDiscount(trigramTable)
-quadgramTable &lt;- calcDiscount(quadgramTable)</code></pre>
+bigramTable &lt;- calcDiscount(bigramTable)</code></pre>
+<pre><code>## Joining, by = &quot;freq&quot;</code></pre>
+<pre class="r"><code>trigramTable &lt;- calcDiscount(trigramTable)</code></pre>
+<pre><code>## Joining, by = &quot;freq&quot;</code></pre>
+<pre class="r"><code>quadgramTable &lt;- calcDiscount(quadgramTable)</code></pre>
+<pre><code>## Joining, by = &quot;freq&quot;</code></pre>
 </div>
-<div id="katz-backoff" class="section level2">
-<h2>Katz Backoff</h2>
+<div id="calculate-conditional-probability-with-katz-backoff" class="section level2">
+<h2>Calculate Conditional Probability with Katz Backoff</h2>
+<pre class="r"><code>calcProb &lt;- function(f, l){
+  three = tail(unlist(strsplit(f,&quot; &quot;)),3)
+  leftover &lt;- 1
+  quadtab &lt;- quadgramTable %&gt;% filter(first == paste(three, collapse = &quot; &quot;))
+  r &lt;-  quadtab %&gt;% filter(last == l)
+  if (nrow(r) &gt; 0) {
+    print(&quot;quadgram hit!&quot;)
+    d = r$discount[1]
+    n = r$freq[1]
+    return(d * n / sum(quadtab$freq))
+  }
+
+  if (nrow(quadtab) &gt; 1)
+    leftover &lt;-  1 - sum(quadtab$discount * quadtab$freq) / sum(quadtab$freq)
+  tritab &lt;- trigramTable %&gt;% filter(first == paste(tail(three,2), collapse = &quot; &quot;))
+  tritab &lt;- tritab %&gt;% anti_join(quadtab, by = &quot;last&quot;)
+  r &lt;-  tritab %&gt;% filter(last == l)
+  if (nrow(r) &gt; 0) {
+    print(&quot;trigram hit!&quot;)
+    d = r$discount[1]
+    n = r$freq[1]
+    return(leftover * d * n / sum(tritab$freq))
+  }
+  
+  if (nrow(tritab) &gt; 1)
+    leftover &lt;-  leftover * ( 1 - sum(tritab$discount * tritab$freq) / sum(tritab$freq))
+  
+  bitab &lt;- bigramTable %&gt;% filter(first == tail(three, 1))
+  bitab &lt;- bitab %&gt;% anti_join(quadtab, by = &quot;last&quot;)
+  bitab &lt;- bitab %&gt;% anti_join(tritab, by = &quot;last&quot;)
+  r &lt;-  bitab %&gt;% filter(last == l)
+  if (nrow(r) &gt; 0) {
+    print(&quot;bigram hit!&quot;)
+    d = r$discount[1]
+    n = r$freq[1]
+    return(leftover * d * n / sum(bitab$freq))
+  }
+
+  leftover &lt;- leftover * ( 1 - sum(bitab$discount * bitab$freq) / sum(bitab$freq))
+  print(&quot;bigram miss!&quot;)
+  return(leftover)
+}
+
+calcProb(&quot;i am&quot;, &quot;a&quot;)</code></pre>
+<pre><code>## [1] &quot;trigram hit!&quot;</code></pre>
+<pre><code>## [1] 0.04864211</code></pre>
+<pre class="r"><code>backoffPred &lt;- function(f){
+  three = tail(unlist(strsplit(f,&quot; &quot;)),3)
+  leftover &lt;- 1
+  
+  pred = data_frame()
+  quadtab &lt;- quadgramTable %&gt;% filter(first == paste(three, collapse = &quot; &quot;))
+  
+  if (nrow(quadtab) &gt; 0) {
+    # print(&quot;quadgram hit!&quot;)
+    pred &lt;- quadtab %&gt;% mutate(prob = freq * discount / sum(quadtab$freq)) %&gt;% select(last, prob)
+    leftover &lt;-  1 - sum(pred$prob)
+    if (leftover &lt; 0.1)
+      return(pred %&gt;% arrange(desc(prob)) %&gt;% head(10))
+  }
+ 
+  
+  tritab &lt;- trigramTable %&gt;% filter(first == paste(tail(three,2), collapse = &quot; &quot;)) %&gt;% anti_join(quadtab, by = &quot;last&quot;)
+  
+  if (nrow(tritab) &gt; 0) {
+    # print(&quot;trigram hit!&quot;)
+    pred &lt;- rbind(pred, tritab %&gt;% mutate(prob = leftover * freq * discount / sum(tritab$freq)) %&gt;% select(last, prob))
+    leftover &lt;-  1 - sum(pred$prob)
+    if (leftover &lt; 0.1)
+      return(pred %&gt;% arrange(desc(prob)) %&gt;% head(10))
+  }
+  
+  bitab &lt;- bigramTable %&gt;% filter(first == tail(three, 1)) %&gt;% anti_join(quadtab, by = &quot;last&quot;) %&gt;% anti_join(tritab, by = &quot;last&quot;)
+
+  if (nrow(bitab) &gt; 0) {
+    # print(&quot;bigram hit!&quot;)
+    pred &lt;- rbind(pred, bitab %&gt;% ungroup() %&gt;% mutate(prob = leftover * freq * discount / sum(bitab$freq)) %&gt;% select(last, prob))
+  }
+  
+  return(pred %&gt;% arrange(desc(prob)) %&gt;% head(10))
+}
+
+backoffPred(&quot;this is a&quot;)</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">last</th>
+<th align="right">prob</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">great</td>
+<td align="right">0.0635559</td>
+</tr>
+<tr class="even">
+<td align="left">good</td>
+<td align="right">0.0434433</td>
+</tr>
+<tr class="odd">
+<td align="left">very</td>
+<td align="right">0.0402253</td>
+</tr>
+<tr class="even">
+<td align="left">big</td>
+<td align="right">0.0168946</td>
+</tr>
+<tr class="odd">
+<td align="left">book</td>
+<td align="right">0.0160901</td>
+</tr>
+<tr class="even">
+<td align="left">pretty</td>
+<td align="right">0.0136766</td>
+</tr>
+<tr class="odd">
+<td align="left">really</td>
+<td align="right">0.0104586</td>
+</tr>
+<tr class="even">
+<td align="left">story</td>
+<td align="right">0.0104586</td>
+</tr>
+<tr class="odd">
+<td align="left">new</td>
+<td align="right">0.0096541</td>
+</tr>
+<tr class="even">
+<td align="left">wonderful</td>
+<td align="right">0.0096541</td>
+</tr>
+</tbody>
+</table>
 </div>
 
 

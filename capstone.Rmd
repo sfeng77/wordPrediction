@@ -12,7 +12,6 @@ knitr::opts_chunk$set(cache = TRUE)
 library(ggplot2)
 library(dplyr)
 library(tidytext)
-library(data.table)
 library(printr)
 ```
 
@@ -123,6 +122,7 @@ bigrams_filtered <- bigrams_separated %>%
 ```{r top.bigrams}
 bigramTable <- bigrams_filtered %>% 
                 count(word1, word2, sort = TRUE) %>% 
+                ungroup() %>%
                 rename(first = word1, last = word2, freq = n)
 ```
 
@@ -173,8 +173,8 @@ head(quadgramTable)
 ```{r GT.discount}
 calcDiscount <- function(ngramTable){
 
-  freqTable <- ngramTable %>% group_by(freq) %>% summarise(n = n()) %>% arrange(freq)
-  freqTable$discount = 1
+  freqTable <- ngramTable %>% group_by(freq) %>% summarise(n = n()) %>% ungroup() %>% arrange(freq)
+  freqTable$discount <- 1
   for(i in 1:5){
     currR = i
     nextR = i + 1
@@ -183,8 +183,7 @@ calcDiscount <- function(ngramTable){
     freqTable$discount[i] <- (nextR / currR) * (nextN / currN)
   }
   freqTable <- freqTable %>% select(freq, discount)
-  ngramTable %>% left_join(freqTable, by = "freq")
-  
+  ngramTable %>% left_join(freqTable)
 }
 
 bigramTable <- calcDiscount(bigramTable)
@@ -193,4 +192,91 @@ quadgramTable <- calcDiscount(quadgramTable)
 ```
 
 
-## Katz Backoff
+## Calculate Conditional Probability with Katz Backoff
+```{r backoff.prob}
+calcProb <- function(f, l){
+  three = tail(unlist(strsplit(f," ")),3)
+  leftover <- 1
+  quadtab <- quadgramTable %>% filter(first == paste(three, collapse = " "))
+  r <-  quadtab %>% filter(last == l)
+  if (nrow(r) > 0) {
+    print("quadgram hit!")
+    d = r$discount[1]
+    n = r$freq[1]
+    return(d * n / sum(quadtab$freq))
+  }
+
+  if (nrow(quadtab) > 1)
+    leftover <-  1 - sum(quadtab$discount * quadtab$freq) / sum(quadtab$freq)
+  tritab <- trigramTable %>% filter(first == paste(tail(three,2), collapse = " "))
+  tritab <- tritab %>% anti_join(quadtab, by = "last")
+  r <-  tritab %>% filter(last == l)
+  if (nrow(r) > 0) {
+    print("trigram hit!")
+    d = r$discount[1]
+    n = r$freq[1]
+    return(leftover * d * n / sum(tritab$freq))
+  }
+  
+  if (nrow(tritab) > 1)
+    leftover <-  leftover * ( 1 - sum(tritab$discount * tritab$freq) / sum(tritab$freq))
+  
+  bitab <- bigramTable %>% filter(first == tail(three, 1))
+  bitab <- bitab %>% anti_join(quadtab, by = "last")
+  bitab <- bitab %>% anti_join(tritab, by = "last")
+  r <-  bitab %>% filter(last == l)
+  if (nrow(r) > 0) {
+    print("bigram hit!")
+    d = r$discount[1]
+    n = r$freq[1]
+    return(leftover * d * n / sum(bitab$freq))
+  }
+
+  leftover <- leftover * ( 1 - sum(bitab$discount * bitab$freq) / sum(bitab$freq))
+  print("bigram miss!")
+  return(leftover)
+}
+
+calcProb("i am", "a")
+```
+
+```{r backoff.prediction}
+backoffPred <- function(f){
+  three = tail(unlist(strsplit(f," ")),3)
+  leftover <- 1
+  
+  pred = data_frame()
+  quadtab <- quadgramTable %>% filter(first == paste(three, collapse = " "))
+  
+  if (nrow(quadtab) > 0) {
+    # print("quadgram hit!")
+    pred <- quadtab %>% mutate(prob = freq * discount / sum(quadtab$freq)) %>% select(last, prob)
+    leftover <-  1 - sum(pred$prob)
+    if (leftover < 0.1)
+      return(pred %>% arrange(desc(prob)) %>% head(10))
+  }
+ 
+  
+  tritab <- trigramTable %>% filter(first == paste(tail(three,2), collapse = " ")) %>% anti_join(quadtab, by = "last")
+  
+  if (nrow(tritab) > 0) {
+    # print("trigram hit!")
+    pred <- rbind(pred, tritab %>% mutate(prob = leftover * freq * discount / sum(tritab$freq)) %>% select(last, prob))
+    leftover <-  1 - sum(pred$prob)
+    if (leftover < 0.1)
+      return(pred %>% arrange(desc(prob)) %>% head(10))
+  }
+  
+  bitab <- bigramTable %>% filter(first == tail(three, 1)) %>% anti_join(quadtab, by = "last") %>% anti_join(tritab, by = "last")
+
+  if (nrow(bitab) > 0) {
+    # print("bigram hit!")
+    pred <- rbind(pred, bitab %>% ungroup() %>% mutate(prob = leftover * freq * discount / sum(bitab$freq)) %>% select(last, prob))
+  }
+  
+  return(pred %>% arrange(desc(prob)) %>% head(10))
+}
+
+backoffPred("this is a")
+```
+
