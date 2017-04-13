@@ -19,11 +19,6 @@ library(printr)
 
 This is the capstone project for the Data Science Specialization. In this work we foucs on Natural Languange Processing and word prediction. 
 
-## Referece 
-[tidytext](http://tidytextmining.com/)  
-[ngram](https://en.wikipedia.org/wiki/N-gram)  
-[katz's back off](https://en.wikipedia.org/wiki/Katz%27s_back-off_model)
-[bad words](https://gist.github.com/jamiew/1112488)
 
 ## Loading data
 Here we load the data from the [original dataset](https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip), make a sample that consists 20% of the records, and save the samples.
@@ -302,7 +297,16 @@ backoffPred <- function(f){
 backoffPred("this is a")
 ```
 
+## Model evaluation
+We use the test dataset to evaluate our n-gram model. 
 ```{r Measure.performance}
 
 ```
+
+## Referece 
+[tidytext](http://tidytextmining.com/)  
+[ngram](https://en.wikipedia.org/wiki/N-gram)  
+[katz's back off](https://en.wikipedia.org/wiki/Katz%27s_back-off_model)  
+[bad words](https://gist.github.com/jamiew/1112488)
+
 
