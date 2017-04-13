@@ -26,48 +26,56 @@ This is the capstone project for the Data Science Specialization. In this work w
 
 ## Loading data
 ```{r sampling}
-processFile <- function(filepath, prob, max) {
-  con <- file(filepath, "r") 
-  datalist = rep("", max)
-  count = 0
-  while (length(oneLine <- readLines(con, n = 1, warn = FALSE)) > 0 & count < max) {
-    if (runif(1) < prob){
-      count = count + 1
-      datalist[count]  <- oneLine
-      count = count
-    }
-  } 
+set.seed(5832)
 
-  close(con) ## It's important to close the connection when you are done
-
-  return(data.frame(lines = datalist[1:count]))
+processFile <- function(filepath, sampleProp) {
+  df = data.frame(readLines(filepath))
+  return(sample_frac(df, sampleProp))
 }
 
-set.seed(5832)
+
 dir.create(file.path(".", "sample"), showWarnings = FALSE)
 if(!file.exists("sample/twitter_sample.txt")){
-  twsample <- processFile("final/en_US/en_US.twitter.txt", prob = 0.2, 200000)
+  twsample <- processFile("final/en_US/en_US.twitter.txt", 0.2)
   write.table(twsample, "sample/twitter_sample.txt", row.names = FALSE, col.names = FALSE, quote = FALSE)
 }
 if(!file.exists("sample/blogs_sample.txt")){
-  blogsample <- processFile("final/en_US/en_US.blogs.txt", prob = 0.2, 200000)
+  blogsample <- processFile("final/en_US/en_US.blogs.txt",  0.2)
   write.table(blogsample, "sample/blogs_sample.txt", row.names = FALSE, col.names = FALSE, quote = FALSE)
 }
 if(!file.exists("sample/news_sample.txt")){
-  newsample <- processFile("final/en_US/en_US.news.txt", prob = 0.2, 200000)
+  newsample <- processFile("final/en_US/en_US.news.txt", 0.2)
   write.table(newsample, "sample/news_sample.txt", row.names = FALSE, col.names = FALSE, quote = FALSE)
 }
 ```
 
 
-```{r load.samples}
-tw <- readLines("sample/twitter_sample.txt")
-bl <- readLines("sample/blogs_sample.txt")
-nw <- readLines("sample/news_sample.txt")
-text = c(tw, bl, nw)
-Encoding(text) <- "UTF-8"
-docs <- data_frame(text)
-tidy_doc <- docs %>% unnest_tokens(word, text) %>%
+```{r dividing.samples}
+if(!file.exists("data/training.rds")){
+  tw <- readLines("sample/twitter_sample.txt")
+  bl <- readLines("sample/blogs_sample.txt")
+  nw <- readLines("sample/news_sample.txt")
+  text = c(tw, bl, nw)
+  Encoding(text) <- "UTF-8"
+  docs <- data_frame(text)
+  set.seed(4869)
+  intrain <- sample(nrow(docs), 0.6 * nrow(docs))
+  training <- docs[intrain,]
+  dir.create(file.path(".", "data"), showWarnings = FALSE)
+  saveRDS(training, "data/training.rds")
+  testing <- docs[-intrain, ]
+  invalid <- sample(nrow(testing), 0.5 * nrow(testing))
+  validating <- testing[invalid,]
+  testing <- testing[-invalid,]
+  saveRDS(validating, "data/validating.rds")
+  saveRDS(testing, "data/testing.rds")
+}
+```
+
+
+```{r unigram.exploration}
+training <- readRDS("data/training.rds")
+tidy_doc <- training %>% unnest_tokens(word, text) %>%
         filter(!grepl("[+-]?([0-9]*[.])?[0-9]+", word))
 ```
 ```{r remove.bad.words}
@@ -93,7 +101,7 @@ tidystop %>%  count(word, sort = TRUE) %>%
 library(wordcloud)
 tidystop %>%
   count(word) %>%
-  with(wordcloud(word, n, max.words = 100))
+  with(wordcloud(word, n, max.words = 120))
 ```
 ```{r comparison.cloud}
 library(reshape2)
@@ -106,7 +114,7 @@ tidystop %>%
 ```
 
 ```{r generate.bigrams}
-mybigrams <- docs %>% unnest_tokens(bigram, text, token = "ngrams", n = 2) 
+mybigrams <- training %>% unnest_tokens(bigram, text, token = "ngrams", n = 2) 
 ```
 ```{r filter.bigrams}
 library(tidyr)
@@ -128,7 +136,7 @@ bigramTable <- bigrams_filtered %>%
 
 
 ```{r trigrams}
-mytrigrams <- docs %>% unnest_tokens(trigram, text, token = "ngrams", n = 3) 
+mytrigrams <- training %>% unnest_tokens(trigram, text, token = "ngrams", n = 3) 
 ```
 ```{r filter.trigrams}
 trigrams_separated <- mytrigrams %>%
@@ -147,7 +155,7 @@ trigramTable <- trigrams_filtered %>% count(word1, word2, word3, sort = TRUE) %>
 
 
 ```{r quadgrams}
-quadgramTable <- docs %>% unnest_tokens(quadgram, text, token = "ngrams", n = 4)  %>%
+quadgramTable <- training %>% unnest_tokens(quadgram, text, token = "ngrams", n = 4)  %>%
         filter(!grepl("[+-]?([0-9]*[.])?[0-9]+", quadgram)) %>% 
         separate(quadgram, c("word1", "word2","word3","word4"), sep = " ") %>%
         filter(!word1 %in% bad.words$word) %>%
@@ -192,9 +200,10 @@ quadgramTable <- calcDiscount(quadgramTable)
 ```
 
 ```{r save.data.for.app}
-saveRDS(bigramTable, "bigrams.rds")
-saveRDS(trigramTable, "trigrams.rds")
-saveRDS(quadgramTable, "quadgrams.rds")
+dir.create(file.path(".", "ngrams"), showWarnings = FALSE)
+saveRDS(bigramTable, "ngrams/bigrams.rds")
+saveRDS(trigramTable, "ngrams/trigrams.rds")
+saveRDS(quadgramTable, "ngrams/quadgrams.rds")
 ```
 
 
@@ -284,5 +293,9 @@ backoffPred <- function(f){
 }
 
 backoffPred("this is a")
+```
+
+```{r Measure.performance}
+
 ```
 

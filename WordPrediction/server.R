@@ -15,7 +15,6 @@ trigramTable <- readRDS("data/trigrams.rds") %>% ungroup()
 quadgramTable <- readRDS("data/quadgrams.rds") %>% ungroup()
 
 
-
 shinyServer(function(input, output) {
   
   backoffPred <- function(f){
