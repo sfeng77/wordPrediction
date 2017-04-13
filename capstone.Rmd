@@ -191,6 +191,12 @@ trigramTable <- calcDiscount(trigramTable)
 quadgramTable <- calcDiscount(quadgramTable)
 ```
 
+```{r save.data.for.app}
+saveRDS(bigramTable, "bigrams.rds")
+saveRDS(trigramTable, "trigrams.rds")
+saveRDS(quadgramTable, "quadgrams.rds")
+```
+
 
 ## Calculate Conditional Probability with Katz Backoff
 ```{r backoff.prob}

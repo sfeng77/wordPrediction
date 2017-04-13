@@ -368,6 +368,9 @@ bigramTable &lt;- calcDiscount(bigramTable)</code></pre>
 <pre><code>## Joining, by = &quot;freq&quot;</code></pre>
 <pre class="r"><code>quadgramTable &lt;- calcDiscount(quadgramTable)</code></pre>
 <pre><code>## Joining, by = &quot;freq&quot;</code></pre>
+<pre class="r"><code>saveRDS(bigramTable, &quot;bigrams.rds&quot;)
+saveRDS(trigramTable, &quot;trigrams.rds&quot;)
+saveRDS(quadgramTable, &quot;quadgrams.rds&quot;)</code></pre>
 </div>
 <div id="calculate-conditional-probability-with-katz-backoff" class="section level2">
 <h2>Calculate Conditional Probability with Katz Backoff</h2>
