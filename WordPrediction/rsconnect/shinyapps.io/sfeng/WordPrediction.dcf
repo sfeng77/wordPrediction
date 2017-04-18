@@ -3,8 +3,8 @@ title: WordPrediction
 account: sfeng
 server: shinyapps.io
 appId: 171904
-bundleId: 787493
+bundleId: 787942
 url: https://sfeng.shinyapps.io/WordPrediction/
-when: 1492044477.52819
+when: 1492090204.1295
 asMultiple: FALSE
 asStatic: FALSE

@@ -13,6 +13,7 @@ library(ggplot2)
 library(dplyr)
 library(tidytext)
 library(printr)
+library(tidyr)
 ```
 
 ## Introduction
@@ -55,6 +56,7 @@ if(!file.exists("data/training.rds")){
   nw <- readLines("sample/news_sample.txt")
   text = c(tw, bl, nw)
   Encoding(text) <- "UTF-8"
+  # docs <- text %>% strsplit(split = "(?!')[[:punct:]]", perl = TRUE) %>% unlist() %>%data_frame(text = .) %>% filter(!text == "")
   docs <- data_frame(text)
   set.seed(4869)
   intrain <- sample(nrow(docs), 0.6 * nrow(docs))
@@ -67,27 +69,35 @@ if(!file.exists("data/training.rds")){
   testing <- testing[-invalid,]
   saveRDS(validating, "data/validating.rds")
   saveRDS(testing, "data/testing.rds")
+} else{
+  training <- readRDS("data/training.rds")
 }
 ```
 
+## Bad Words
+```{r bad.words}
+bad.words <- read.csv("bad-words.txt", col.names = c("word"),header = FALSE)
+```
+
+
 ## Unigram Exploration
 We tokenize the text samples into words, remove the bad words and stop words, and do some exploratory analysis.
-```{r unigram.exploration}
-training <- readRDS("data/training.rds")
-tidy_doc <- training %>% unnest_tokens(word, text) %>%
-        filter(!grepl("[+-]?([0-9]*[.])?[0-9]+", word))
-```
-```{r remove.bad.words}
-bad.words <- data_frame(word = as.character(read.table("google_twunter_lol", skip = 1, sep = ":", nrow = 451)$V1))
-tidy_doc <- tidy_doc %>% anti_join(bad.words)
+```{r genetate.unigram}
+unigram <- training %>% unnest_tokens(word, text) %>%
+    filter(!grepl("[+-]?([0-9]*[.])?[0-9]+", word)) %>% 
+      count(word) %>%
+          anti_join(bad.words) %>%
+            ungroup() %>%
+              arrange(desc(n))
+
 ```
 ```{r remove.stop.words}
 data(stop_words)
-tidystop <- tidy_doc %>% anti_join(stop_words)
+tidystop <- unigram %>% anti_join(stop_words)
 ```
 
 ```{r word.count}
-tidystop %>%  count(word, sort = TRUE) %>%
+tidystop %>%
    .[1:30,] %>%
    mutate(word = reorder(word, n)) %>%
    ggplot(aes(word, n)) +
@@ -99,7 +109,6 @@ tidystop %>%  count(word, sort = TRUE) %>%
 ```{r word.cloud}
 library(wordcloud)
 tidystop %>%
-  count(word) %>%
   with(wordcloud(word, n, max.words = 120))
 ```
 ```{r comparison.cloud}
@@ -109,103 +118,61 @@ tidystop %>%
   count(word, sentiment, sort = TRUE) %>%
   acast(word ~ sentiment, value.var = "n", fill = 0) %>%
   comparison.cloud(colors = c("#F8766D", "#00BFC4"),
-                   max.words = 100)
+                   max.words = 120,title.size=1)
 ```
 
 ## Generating n-grams
-We tokenize the text into bigrams, trigrams and quadgrams, and remove the tokens that contain bad words. We do not remove the stop words since they would be valid predictions.
+We tokenize the text into bigrams, trigrams and quadgrams, and remove the tokens that contain bad words as output. We do not remove the stop words since they would be valid predictions. 
 
-```{r generate.bigrams}
-mybigrams <- training %>% unnest_tokens(bigram, text, token = "ngrams", n = 2) 
-```
-```{r filter.bigrams}
-library(tidyr)
-bigrams_separated <- mybigrams %>%
-            filter(!grepl("[+-]?([0-9]*[.])?[0-9]+", bigram)) %>% 
-            separate(bigram, c("word1", "word2"), sep = " ")
 
-bigrams_filtered <- bigrams_separated %>%
-  filter(!word1 %in% bad.words$word) %>%
-  filter(!word2 %in% bad.words$word)
-```
+```{r generate n-grams}
+ngram <- function(text, n){
+  text %>% unnest_tokens(ngram, text, token = "ngrams", n = n) %>%
+    filter(!grepl("[+-]?([0-9]*[.])?[0-9]+", ngram)) %>% 
+      count(ngram) %>%
+       extract(ngram, into = c("first", "last"), '(.*)\\s+([^ ]+)$') %>%
+          anti_join(bad.words, by = c("last" = "word"))%>%
+            ungroup() %>%
+              arrange(desc(n))
+}
 
-```{r top.bigrams}
-bigramTable <- bigrams_filtered %>% 
-                count(word1, word2, sort = TRUE) %>% 
-                ungroup() %>%
-                rename(first = word1, last = word2, freq = n)
+bigrams <- ngram(training, 2)
+trigrams <- ngram(training, 3)
+quadgrams <- ngram(training, 4)
+
 ```
 
 
-```{r trigrams}
-mytrigrams <- training %>% unnest_tokens(trigram, text, token = "ngrams", n = 3) 
-```
-```{r filter.trigrams}
-trigrams_separated <- mytrigrams %>%
-            filter(!grepl("[+-]?([0-9]*[.])?[0-9]+", trigram)) %>% 
-            separate(trigram, c("word1", "word2","word3"), sep = " ")
 
-trigrams_filtered <- trigrams_separated %>%
-  filter(!word1 %in% bad.words$word) %>%
-  filter(!word2 %in% bad.words$word) %>%
-  filter(!word3 %in% bad.words$word)
-```
-
-```{r top.trigrams}
-trigramTable <- trigrams_filtered %>% count(word1, word2, word3, sort = TRUE) %>% rename(last = word3, freq = n) %>% mutate(first = paste(word1, word2)) %>% ungroup() %>% select(first, last, freq)
-```
-
-
-```{r quadgrams}
-quadgramTable <- training %>% unnest_tokens(quadgram, text, token = "ngrams", n = 4)  %>%
-        filter(!grepl("[+-]?([0-9]*[.])?[0-9]+", quadgram)) %>% 
-        separate(quadgram, c("word1", "word2","word3","word4"), sep = " ") %>%
-        filter(!word1 %in% bad.words$word) %>%
-        filter(!word2 %in% bad.words$word) %>%
-        filter(!word3 %in% bad.words$word) %>%
-        filter(!word4 %in% bad.words$word) %>%
-        count(word1, word2, word3, word4, sort = TRUE) %>% 
-        rename(last = word4, freq = n) %>% 
-        mutate(first = paste(word1, word2, word3)) %>% 
-        ungroup() %>% 
-        select(first, last, freq)
-```
-
-```{r view.bigram.trigram}
-head(bigramTable)
-head(trigramTable)
-head(quadgramTable)
-```
-
-
-## Good-Turing Discount
+## Calculating N-Gram probability with Good-Turing Discount 
 
 ```{r GT.discount}
 calcDiscount <- function(ngramTable){
 
-  freqTable <- ngramTable %>% group_by(freq) %>% summarise(n = n()) %>% ungroup() %>% arrange(freq)
+  freqTable <- ngramTable %>% group_by(n) %>% summarise(count = n()) %>% ungroup() %>% arrange(n)
   freqTable$discount <- 1
   for(i in 1:5){
-    currR = i
-    nextR = i + 1
-    currN = freqTable$n[i]
-    nextN = freqTable$n[i + 1]
-    freqTable$discount[i] <- (nextR / currR) * (nextN / currN)
+    currN = freqTable$count[i]
+    nextN = freqTable$count[i + 1]
+    freqTable$discount[i] <- (i + 1)/i * (nextN / currN)
   }
-  freqTable <- freqTable %>% select(freq, discount)
-  ngramTable %>% left_join(freqTable)
+  freqTable <- freqTable %>% select(n, discount)
+  ngramTable %>% select(first, last, n) %>% left_join(freqTable) %>% ungroup()
 }
 
-bigramTable <- calcDiscount(bigramTable)
-trigramTable <- calcDiscount(trigramTable)
-quadgramTable <- calcDiscount(quadgramTable)
+bigrams <- calcDiscount(bigrams)
+trigrams <- calcDiscount(trigrams)
+quadgrams <- calcDiscount(quadgrams)
+
+unigram$p = unigram$n / sum(unigram$n)
 ```
 
 ```{r save.data.for.app}
 dir.create(file.path(".", "ngrams"), showWarnings = FALSE)
-saveRDS(bigramTable, "ngrams/bigrams.rds")
-saveRDS(trigramTable, "ngrams/trigrams.rds")
-saveRDS(quadgramTable, "ngrams/quadgrams.rds")
+saveRDS(unigram, "ngrams/unigrams.rds")
+saveRDS(bigrams, "ngrams/bigrams.rds")
+saveRDS(trigrams, "ngrams/trigrams.rds")
+saveRDS(quadgrams, "ngrams/quadgrams.rds")
 ```
 
 
@@ -214,60 +181,64 @@ saveRDS(quadgramTable, "ngrams/quadgrams.rds")
 calcProb <- function(f, l){
   three = tail(unlist(strsplit(f," ")),3)
   leftover <- 1
-  quadtab <- quadgramTable %>% filter(first == paste(three, collapse = " "))
+  quadtab <- quadgrams %>% filter(first == paste(three, collapse = " "))
   r <-  quadtab %>% filter(last == l)
   if (nrow(r) > 0) {
-    print("quadgram hit!")
     d = r$discount[1]
-    n = r$freq[1]
-    return(d * n / sum(quadtab$freq))
+    n = r$n[1]
+    return(d * n / sum(quadtab$n))
   }
-
+  
   if (nrow(quadtab) > 1)
-    leftover <-  1 - sum(quadtab$discount * quadtab$freq) / sum(quadtab$freq)
-  tritab <- trigramTable %>% filter(first == paste(tail(three,2), collapse = " "))
-  tritab <- tritab %>% anti_join(quadtab, by = "last")
+    leftover <-  1 - sum(quadtab$discount * quadtab$n) / sum(quadtab$n)
+  
+  tritab <- trigrams %>% filter(first == paste(tail(three,2), collapse = " ")) %>% 
+    anti_join(quadtab, by = "last")
+  
   r <-  tritab %>% filter(last == l)
   if (nrow(r) > 0) {
-    print("trigram hit!")
     d = r$discount[1]
-    n = r$freq[1]
-    return(leftover * d * n / sum(tritab$freq))
+    n = r$n[1]
+    return(leftover * d * n / sum(tritab$n))
   }
   
   if (nrow(tritab) > 1)
-    leftover <-  leftover * ( 1 - sum(tritab$discount * tritab$freq) / sum(tritab$freq))
+    leftover <-  leftover * ( 1 - sum(tritab$discount * tritab$n) / sum(tritab$n))
   
-  bitab <- bigramTable %>% filter(first == tail(three, 1))
-  bitab <- bitab %>% anti_join(quadtab, by = "last")
-  bitab <- bitab %>% anti_join(tritab, by = "last")
+  bitab <- bigrams %>% 
+    filter(first == tail(three, 1)) %>% 
+    anti_join(quadtab, by = "last")%>% 
+    anti_join(tritab, by = "last")
+  
   r <-  bitab %>% filter(last == l)
   if (nrow(r) > 0) {
     print("bigram hit!")
     d = r$discount[1]
-    n = r$freq[1]
-    return(leftover * d * n / sum(bitab$freq))
+    n = r$n[1]
+    return(leftover * d * n / sum(bitab$n))
   }
-
-  leftover <- leftover * ( 1 - sum(bitab$discount * bitab$freq) / sum(bitab$freq))
-  print("bigram miss!")
-  return(leftover)
+  
+  leftover <- leftover * ( 1 - sum(bitab$discount * bitab$n) / sum(bitab$n))
+  
+  return(leftover * filter(unigram, word == l)$p)
 }
 
 calcProb("i am", "a")
 ```
 
+
+## Make prediction
 ```{r backoff.prediction}
 backoffPred <- function(f){
   three = tail(unlist(strsplit(f," ")),3)
-  leftover <- 1
+  leftover <- 1.0
   
   pred = data_frame()
   quadtab <- quadgramTable %>% filter(first == paste(three, collapse = " "))
   
   if (nrow(quadtab) > 0) {
     # print("quadgram hit!")
-    pred <- quadtab %>% mutate(prob = freq * discount / sum(quadtab$freq)) %>% select(last, prob)
+    pred <- quadtab %>% mutate(prob = n * discount / sum(quadtab$n)) %>% select(last, prob)
     leftover <-  1 - sum(pred$prob)
     if (leftover < 0.1)
       return(pred %>% arrange(desc(prob)) %>% head(10))
@@ -278,7 +249,7 @@ backoffPred <- function(f){
   
   if (nrow(tritab) > 0) {
     # print("trigram hit!")
-    pred <- rbind(pred, tritab %>% mutate(prob = leftover * freq * discount / sum(tritab$freq)) %>% select(last, prob))
+    pred <- rbind(pred, tritab %>% mutate(prob = leftover * n * discount / sum(tritab$n)) %>% select(last, prob))
     leftover <-  1 - sum(pred$prob)
     if (leftover < 0.1)
       return(pred %>% arrange(desc(prob)) %>% head(10))
@@ -288,7 +259,7 @@ backoffPred <- function(f){
 
   if (nrow(bitab) > 0) {
     # print("bigram hit!")
-    pred <- rbind(pred, bitab %>% ungroup() %>% mutate(prob = leftover * freq * discount / sum(bitab$freq)) %>% select(last, prob))
+    pred <- rbind(pred, bitab %>% ungroup() %>% mutate(prob = leftover * n * discount / sum(bitab$n)) %>% select(last, prob))
   }
   
   return(pred %>% arrange(desc(prob)) %>% head(10))
@@ -299,14 +270,35 @@ backoffPred("this is a")
 
 ## Model evaluation
 We use the test dataset to evaluate our n-gram model. 
-```{r Measure.performance}
-
+```{r make.testing}
+set.seed(3825)
+testing <- readRDS("data/testing.rds")
+testquadgram <- testing %>% 
+    unnest_tokens(ngram, text, token = "ngrams", n = 4) %>%
+    filter(!grepl("[+-]?([0-9]*[.])?[0-9]+", ngram)) %>% 
+    extract(ngram, into = c("first", "last"), '(.*)\\s+([^ ]+)$') %>%
+    filter(last %in% unigrams)
 ```
+
+
+Perplexity measures the average inverse probability of the test, normalized by the number of words. A smalller perplexity means a higher probability. 
+```{r Measure.perplexity}
+testquadgram$p = 1.0
+testLength = nrow(testquadgram)
+
+for(i in 1:testLength){
+  testquadgram$p[i] = calcProb(testquadgram$first[i], testquadgram$last[i])
+}
+
+exp(-1/testLength * sum(log(testquadgram[1:testLength,'p'])))
+```
+
+## Profiling
 
 ## Referece 
 [tidytext](http://tidytextmining.com/)  
 [ngram](https://en.wikipedia.org/wiki/N-gram)  
 [katz's back off](https://en.wikipedia.org/wiki/Katz%27s_back-off_model)  
-[bad words](https://gist.github.com/jamiew/1112488)
-
-
+[bad words](https://www.cs.cmu.edu/~biglou/resources/)
+[smoothing and discount](https://nlp.stanford.edu/~wcmac/papers/20050421-smoothing-tutorial.pdf)
+[CS498JH Introduction to NLP](https://courses.engr.illinois.edu/cs498jh/syllabus.html)
